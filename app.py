@@ -7,11 +7,13 @@ from sqlalchemy import create_engine, func
 
 from flask import Flask, jsonify
 
+import datetime as dt
+
 
 #################################################
 # Database Setup
 #################################################
-engine = create_engine("sqlite:///hawaii copy.sqlite")
+engine = create_engine("sqlite:///hawaii.sqlite")
 
 # reflect an existing database into a new model
 Base = automap_base()
@@ -35,19 +37,13 @@ app = Flask(__name__)
 
 @app.route("/")
 def welcome():
-    """List all available api routes."""
     return (
         f"Available Routes:<br/>"
         f"/api/v1.0/percipitation<br/>"
         f"/api/v1.0/stations<br/>"
         f"/api/v1.0/tempature<br/>"
-        f"<br/>"
-        f"- start only calculates `TMIN`, `TAVG`, and `TMAX` for all dates greater than and equal to the start date.<br/>"
-        f"/api/v1.0/start<br/>"
-        f"- When given the start and the end date, calculate the `TMIN`, `TAVG`, and `TMAX` for dates between the start and end date inclusive.<br/>"
-        f"/api/v1.0/start/end<br/>"
-    
-    
+        f"/api/v1.0/start_end/<start_date>/<end_date><br/>"
+        f"Enter start_date and <end_date> in YYYY-MM-DD format"
     )
 
 
@@ -58,41 +54,53 @@ def welcome():
 def percipitation():
     # Create our session (link) from Python to the DB
     session = Session(engine) 
-    results = session.query(Measurement.date, Measurement.prcp).all()
+    results = session.query(Measurement.date, Measurement.prcp).limit(250)
     session.close()
     
-    # Create a dictionary from the row data and append to a list of all_passengers
-    date_prcp = []
+    prcp_date = []
+    prcp_date_dict = {}
     for date, prcp in results:
-        date_prcp_dict = {}
-        date_prcp_dict["date"] = date
-        date_prcp_dict["Percipitation"] = prcp
-        date_prcp.append(date_prcp_dict)
+        prcp_date_dict['Date'] = date
+        prcp_date_dict['Prcp'] = prcp
+        prcp_date.append(prcp_date_dict)
+    
+    return jsonify(prcp_date)
 
-    return jsonify(date_prcp)
+
+
 
 @app.route("/api/v1.0/stations")
 def stations():
+    
     # Create our session (link) from Python to the DB
     session = Session(engine)
-
-    results = session.query(Station.name).all()
+    results = session.query(Station.station, Station.name).all()
     session.close()
 
-    station_names = list(np.ravel(results))
-    return jsonify(station_names)
+    station_name = []
+    for station, name in results:
+        station_name_dict = {}
+        station_name_dict['Station'] = station
+        station_name_dict['Name'] = name
+        station_name.append(station_name_dict)
+    
+    return jsonify(station_name)
 
 
 @app.route("/api/v1.0/tempature")
 def tempature():
-    
+        
+    date = dt.date(2016,7,23) 
+
     session = Session(engine)
-    results = session.query(Measurement.date, Measurement.tobs).all()
+    results = session.query(Measurement.date, Measurement.tobs).\
+    filter(Measurement.date > date).all()
     session.close()
 
+
     tobs_dates = []
-    tobs_dates_dict = {}
-    for tobs, date in results:
+    for date, tobs in results:
+        tobs_dates_dict = {}
         tobs_dates_dict["date"] = date
         tobs_dates_dict["tempature"] = tobs
 
@@ -100,32 +108,37 @@ def tempature():
     
     return jsonify(tobs_dates)
 
-@app.route("/api/v1.0/start/end")
-def end():
+@app.route("/api/v1.0/start_end/<start_date>/<end_date>")
+def start_end(start_date, end_date):
 
-    session = Session(engine)
-    session.close()
+    date1 = start_date
+    svalues = date1.split("-")
+    syear = int(svalues[0])
+    smonth = int(svalues[1])
+    sday = int(svalues[2])
+
+    date2 = end_date
+    evalues = date2.split("-")
+    eyear = int(evalues[0])
+    emonth = int(evalues[1])
+    eday = int(evalues[2])
+
+
+    start_date1 = dt.date(syear,smonth,sday)
+    end_date1 = dt.date(eyear,emonth,eday)
     
     def calc_temps(start_date, end_date):
+
+        session = Session(engine)
 
         return session.query(func.min(Measurement.tobs), func.avg(Measurement.tobs), func.max(Measurement.tobs)).\
         filter(Measurement.date >= start_date).filter(Measurement.date <= end_date).all()
 
-    start_date = input(f'Enter start date in yyyy/mm/dd format')
-    end_date = input(f'Enter end date in yyyy/mm/dd format')
-   
-    trip_temps = calc_temps(start_date, end_date)
-    
-    _min = trip_temps[0][0]
-    _max = trip_temps[0][1]
-    _avg = trip_temps[0][2]
-    
-    list_ = []
-    list_.append(_max)
-    list_.append(_min)
-    list_.append(_avg)
+        session.close()
 
-    return jsonify(list_)
+    results1 = calc_temps(start_date1, end_date1)
+    
+    return jsonify({'Min':results1[0][0], 'Avg':results1[0][1], 'Max':results1[0][2]})
 
 
 if __name__ == '__main__':
